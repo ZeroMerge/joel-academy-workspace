@@ -67,7 +67,7 @@ export function TeamWorkspaceClient({ initialResources, session }: { initialReso
       {canEdit && (
         <div className="flex items-center justify-end">
           <Button 
-            variant={isEditMode ? 'default' : 'outline'} 
+            variant={isEditMode ? 'primary' : 'secondary'} 
             onClick={() => setIsEditMode(!isEditMode)}
           >
             {isEditMode ? 'Done Editing' : 'Manage Resources'}
@@ -138,7 +138,7 @@ export function TeamWorkspaceClient({ initialResources, session }: { initialReso
 
       {isEditMode && (
         <div className="pt-4 flex justify-center">
-          <Button variant="outline" onClick={() => { setEditingResource(null); setIsFormOpen(true); }}>
+          <Button variant="secondary" onClick={() => { setEditingResource(null); setIsFormOpen(true); }}>
             <Plus className="mr-2 h-4 w-4" />
             Add New Category
           </Button>

@@ -51,7 +51,7 @@ export function SuggestionWidget() {
           </h3>
           <p className="text-sm text-muted">Drop a suggestion or feedback directly to leadership.</p>
         </div>
-        <Button variant="outline" className="shrink-0" onClick={(e) => { e.stopPropagation(); setIsOpen(true); }}>
+        <Button variant="secondary" className="shrink-0" onClick={(e) => { e.stopPropagation(); setIsOpen(true); }}>
           Send Feedback
         </Button>
       </div>

@@ -86,7 +86,7 @@ export function ResourceFormModal({ resource, scopeId, onClose, onSaved }: { res
           </div>
 
           <div className="pt-4 flex justify-end space-x-3">
-            <Button type="button" variant="outline" onClick={onClose}>Cancel</Button>
+            <Button type="button" variant="secondary" onClick={onClose}>Cancel</Button>
             <Button type="submit" disabled={isSubmitting}>
               {isSubmitting ? 'Saving...' : 'Save'}
             </Button>
