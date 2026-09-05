@@ -37,3 +37,12 @@ body {
 .divider-b {
   border-bottom: 1px solid var(--color-divider);
 }
+
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+.no-scrollbar {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+

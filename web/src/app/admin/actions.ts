@@ -71,9 +71,74 @@ export async function createPerson(data: { email: string; handle: string; name: 
   }
 
   // Send the welcome email
-  await sendWelcomeEmail(data.email, data.name, data.handle, password, data.baseRole);
+  const emailResult = await sendWelcomeEmail(data.email, data.name, data.handle, password, data.baseRole);
 
   revalidatePath('/admin/people');
+  return { 
+    success: true, 
+    tempPassword: password,
+    emailSent: emailResult.success,
+    emailWarning: emailResult.warning || emailResult.error
+  };
+}
+
+export async function deletePerson(userId: string) {
+  const supabase = await createClient();
+  const { data: userData } = await supabase.auth.getUser();
+  if (!userData?.user) return { error: 'Not authenticated' };
+
+  if (userData.user.id === userId) {
+    return { error: 'You cannot delete your own admin account.' };
+  }
+
+  // Verify admin
+  const { data: roleScopes } = await supabase
+    .from('user_role_scopes')
+    .select('base_role')
+    .eq('user_id', userData.user.id)
+    .eq('base_role', 'admin');
+
+  if (!roleScopes || roleScopes.length === 0) {
+    return { error: 'Not authorized' };
+  }
+
+  const serviceClient = createSupabaseClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.SUPABASE_SERVICE_ROLE_KEY!
+  );
+
+  // 1. Unassign open and reviewed tasks
+  await serviceClient.from('tasks').update({ assignee_id: null }).eq('assignee_id', userId);
+  await serviceClient.from('tasks').update({ reviewer_id: null }).eq('reviewer_id', userId);
+
+  // 2. Unlink task_status_log
+  await serviceClient.from('task_status_log').update({ changed_by: null }).eq('changed_by', userId);
+
+  // 3. Delete vault grants and requests
+  await serviceClient.from('vault_grants').delete().eq('user_id', userId);
+  await serviceClient.from('vault_grants').delete().eq('granted_by', userId);
+  await serviceClient.from('vault_requests').delete().eq('requested_by', userId);
+
+  // 4. Delete user analytics & role scopes
+  await serviceClient.from('user_analytics').delete().eq('user_id', userId);
+  await serviceClient.from('user_role_scopes').delete().eq('user_id', userId);
+  await serviceClient.from('notifications').delete().eq('user_id', userId);
+
+  // 5. Delete from public.users table
+  const { error: deleteDbError } = await serviceClient.from('users').delete().eq('id', userId);
+  if (deleteDbError) {
+    console.error('Failed to delete user from database:', deleteDbError);
+    return { error: deleteDbError.message };
+  }
+
+  // 6. Delete permanently from Supabase Auth
+  const { error: authDeleteError } = await serviceClient.auth.admin.deleteUser(userId);
+  if (authDeleteError) {
+    console.error('Failed to delete user from Supabase Auth:', authDeleteError);
+  }
+
+  revalidatePath('/admin/people');
+  revalidatePath('/team');
   return { success: true };
 }
 

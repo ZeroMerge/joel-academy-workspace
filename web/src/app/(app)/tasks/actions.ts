@@ -1,13 +1,14 @@
 'use server';
 
 import { revalidatePath } from 'next/cache';
+import { redirect } from 'next/navigation';
 import { createClient } from '@/lib/supabase/server';
 import { Database } from '@/types/database.types';
 import { getSessionContext } from '@/lib/session';
 
 type TaskInsert = Database['public']['Tables']['tasks']['Insert'];
 
-export async function createTask(data: {
+export async function createTask(dataOrFormData: FormData | {
   title: string;
   description?: string;
   task_type_id: string;
@@ -16,7 +17,30 @@ export async function createTask(data: {
   reviewer_id?: string;
   priority?: string;
   deadline?: string;
+  tagged_resource_ids?: string[];
+  tagged_vault_ids?: string[];
 }) {
+  const isFormData = dataOrFormData instanceof FormData;
+  let data: any;
+  if (isFormData) {
+    const rawTaggedResources = dataOrFormData.getAll('tagged_resource_ids');
+    const rawTaggedVault = dataOrFormData.getAll('tagged_vault_ids');
+    data = {
+      title: dataOrFormData.get('title') as string,
+      description: dataOrFormData.get('description') as string,
+      task_type_id: dataOrFormData.get('task_type_id') as string,
+      scope_id: dataOrFormData.get('scope_id') as string,
+      assignee_id: dataOrFormData.get('assignee_id') as string,
+      reviewer_id: dataOrFormData.get('reviewer_id') as string,
+      priority: dataOrFormData.get('priority') as string,
+      deadline: dataOrFormData.get('deadline') as string,
+      tagged_resource_ids: rawTaggedResources.map(String).filter(Boolean),
+      tagged_vault_ids: rawTaggedVault.map(String).filter(Boolean),
+    };
+  } else {
+    data = dataOrFormData;
+  }
+
   const supabase = await createClient();
   const session = await getSessionContext();
   
@@ -41,9 +65,16 @@ export async function createTask(data: {
   const workflow = taskType.workflow as any;
   const initialStatus = workflow?.statuses?.[0] || 'Assigned';
 
-  const taskData: TaskInsert = {
+  const notesMeta = JSON.stringify({
+    description: data.description || '',
+    tagged_resource_ids: data.tagged_resource_ids || [],
+    tagged_vault_ids: data.tagged_vault_ids || []
+  });
+
+  const taskData: any = {
     title: data.title,
     description: data.description || null,
+    notes: notesMeta,
     task_type_id: data.task_type_id,
     scope_id: data.scope_id,
     assignee_id: data.assignee_id,
@@ -64,6 +95,20 @@ export async function createTask(data: {
     return { error: insertError.message };
   }
 
+  // Section 7.3: Automatic Task-Linked Vault Grants
+  if (data.tagged_vault_ids && data.tagged_vault_ids.length > 0 && data.assignee_id) {
+    for (const vaultId of data.tagged_vault_ids) {
+      // Long-term active expiration while task is active
+      const expiresAt = new Date(Date.now() + 10 * 365 * 24 * 60 * 60 * 1000).toISOString();
+      await supabase.from('vault_grants').upsert({
+        resource_id: vaultId,
+        user_id: data.assignee_id,
+        granted_by: session.user.id,
+        expires_at: expiresAt
+      });
+    }
+  }
+
   // Log the initial status
   await supabase.from('task_status_log').insert({
     task_id: newTask.id,
@@ -73,6 +118,10 @@ export async function createTask(data: {
   });
 
   revalidatePath('/tasks');
+  revalidatePath('/resources');
+  if (isFormData) {
+    redirect('/tasks');
+  }
   return { data: newTask };
 }
 
@@ -117,12 +166,44 @@ export async function updateTaskStatus(taskId: string, newStatus: string, submis
     updates.submitted_at = new Date().toISOString();
   }
 
-  // If status implies completion (e.g. Approved/Published - let's say 'Approved' for now)
-  // We'll need a way in workflow JSON to denote terminal statuses. 
-  // Let's assume if there are no next transitions, it's terminal.
-  const isTerminal = !(workflow?.transitions?.[newStatus]?.length > 0);
+  // If status implies completion (e.g. Approved/Published)
+  const isTerminal = !(workflow?.transitions?.[newStatus]?.length > 0) || newStatus.toLowerCase() === 'approved';
   if (isTerminal) {
     updates.completed_at = new Date().toISOString();
+
+    // Section 7.3: Automatically revoke task-linked vault grants upon completion
+    try {
+      const { data: fullTask } = await supabase.from('tasks').select('notes, assignee_id').eq('id', taskId).single();
+      if (fullTask?.notes && fullTask?.assignee_id) {
+        const meta = JSON.parse(fullTask.notes);
+        if (meta.tagged_vault_ids && Array.isArray(meta.tagged_vault_ids)) {
+          for (const vaultId of meta.tagged_vault_ids) {
+            // Check if user holds any other active task that tags this vault item
+            const { data: otherTasks } = await supabase
+              .from('tasks')
+              .select('id, notes')
+              .eq('assignee_id', fullTask.assignee_id)
+              .neq('id', taskId)
+              .neq('status', 'approved');
+
+            const stillHeld = otherTasks?.some(ot => {
+              try {
+                const om = JSON.parse(ot.notes || '{}');
+                return om.tagged_vault_ids?.includes(vaultId);
+              } catch { return false; }
+            });
+
+            if (!stillHeld) {
+              await supabase.from('vault_grants').delete()
+                .eq('resource_id', vaultId)
+                .eq('user_id', fullTask.assignee_id);
+            }
+          }
+        }
+      }
+    } catch (err) {
+      console.error('Failed to revoke task-linked vault grants:', err);
+    }
   }
 
   const { error: updateError } = await supabase

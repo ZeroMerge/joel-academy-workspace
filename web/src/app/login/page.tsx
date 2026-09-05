@@ -8,9 +8,10 @@ import { Label } from '@/components/ui/label';
 
 export default function LoginPage() {
   return (
-    <div className="flex min-h-screen items-center justify-center bg-background p-4 sm:p-8">
-      <div className="w-full max-w-sm space-y-8">
-        <div className="space-y-2 text-center">
+    <div className="flex min-h-[100dvh] items-center justify-center bg-background p-4 sm:p-8">
+      <div className="w-[90%] sm:w-full max-w-sm mx-auto space-y-8">
+        <div className="space-y-2 flex flex-col items-center text-center">
+          <img src="/logo.jpg" alt="Joel Academy Logo" className="h-20 w-20 rounded-2xl object-cover mb-4" />
           <h1 className="text-2xl font-bold tracking-tight text-foreground">
             Joel Academy
           </h1>

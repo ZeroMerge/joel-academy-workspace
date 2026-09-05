@@ -1,4 +1,4 @@
-'use client';
+﻿'use client';
 
 import React, { useState } from 'react';
 import Link from 'next/link';
@@ -6,6 +6,7 @@ import { usePathname } from 'next/navigation';
 import { Home, CheckSquare, Users, BookOpen, Bell, ArrowRightLeft, Settings, LogOut } from 'lucide-react';
 import { SessionContext } from '@/lib/session';
 import { updateActiveScope } from '@/lib/sessionActions';
+import { logout } from '@/app/login/actions';
 
 export function AppShell({ children, session }: { children: React.ReactNode; session: SessionContext }) {
   const pathname = usePathname();
@@ -21,6 +22,13 @@ export function AppShell({ children, session }: { children: React.ReactNode; ses
     { href: '/resources', label: 'Resources', icon: BookOpen },
   ];
 
+  const isItemActive = (href: string) => {
+    if (href === '/home') {
+      return pathname === '/home' || pathname === '/' || pathname === '';
+    }
+    return pathname === href || pathname.startsWith(href + '/');
+  };
+
   const handleScopeSwitch = async (scopeId: string) => {
     setIsSwitching(true);
     await updateActiveScope(scopeId);
@@ -30,29 +38,31 @@ export function AppShell({ children, session }: { children: React.ReactNode; ses
 
   return (
     <div className="flex h-[100dvh] w-full flex-col md:flex-row bg-background text-foreground overflow-hidden">
-      {/* Desktop Sidebar */}
-      <aside className="hidden md:flex w-64 flex-col bg-muted/5 border-r-0">
+      {/* Desktop Sidebar (YouTube Style) */}
+      <aside className="hidden md:flex w-64 flex-col bg-muted/5 border-r-0 select-none">
         <div className="p-5 flex items-center space-x-3">
-          <div className="h-7 w-7 rounded bg-foreground flex items-center justify-center">
-            <span className="text-background text-sm font-bold">J</span>
-          </div>
+          <img src="/logo.jpg" alt="Joel Academy" className="h-8 w-8 rounded-[12px] object-cover shrink-0" />
           <span className="font-semibold text-base tracking-tight">Joel Academy</span>
         </div>
-        
-        <nav className="flex-1 space-y-1 p-3">
+
+        <nav className="flex-1 space-y-1.5 p-3">
           {navItems.map((item) => {
             const Icon = item.icon;
-            const isActive = pathname.startsWith(item.href);
+            const active = isItemActive(item.href);
             return (
               <Link
                 key={item.href}
                 href={item.href}
-                className={`flex items-center space-x-3 rounded-[12px] px-3 py-2.5 text-sm font-medium transition-colors ${
-                  isActive ? 'bg-muted/10 text-foreground' : 'text-muted hover:bg-muted/5 hover:text-foreground'
+                className={`flex items-center space-x-3 rounded-2xl px-3 py-2.5 text-sm transition-all ${
+                  active 
+                    ? 'bg-muted/15 text-foreground font-semibold shadow-xs' 
+                    : 'text-muted hover:bg-muted/5 hover:text-foreground font-medium'
                 }`}
               >
-                <Icon className="h-5 w-5" strokeWidth={1.5} />
-                <span>{item.label}</span>
+                {/* Active indicator bar */}
+                <div className={`w-1 h-5 rounded-full transition-all ${active ? 'bg-foreground' : 'bg-transparent'}`} />
+                <Icon className={`h-5 w-5 shrink-0 ${active ? 'stroke-[2.2] text-foreground' : 'stroke-[1.5] text-muted'}`} />
+                <span className="truncate">{item.label}</span>
               </Link>
             );
           })}
@@ -64,29 +74,28 @@ export function AppShell({ children, session }: { children: React.ReactNode; ses
         {/* Top Header Bar */}
         <header className="flex-none h-16 px-4 flex items-center justify-between md:justify-end bg-background/80 backdrop-blur-sm z-40 sticky top-0">
           <div className="md:hidden flex items-center space-x-2">
-            <div className="h-6 w-6 rounded bg-foreground flex items-center justify-center">
-              <span className="text-background text-xs font-bold">J</span>
-            </div>
+            <img src="/logo.jpg" alt="Joel Academy" className="h-7 w-7 rounded-[8px] object-cover shrink-0" />
             <span className="font-semibold text-sm">Joel Academy</span>
           </div>
 
           <div className="flex items-center space-x-3">
             {session.canSeeRequests && (
-              <button 
+              <button
                 onClick={() => setRequestsOpen(true)}
-                className="h-10 w-10 flex items-center justify-center rounded-[12px] bg-muted/10 hover:bg-muted/20 transition-colors relative"
+                className="h-10 w-10 flex items-center justify-center rounded-[12px] bg-muted/10 hover:bg-muted/20 transition-colors relative cursor-pointer"
+                title="Cross-team Requests"
               >
                 <ArrowRightLeft className="h-5 w-5" strokeWidth={1.5} />
               </button>
             )}
 
             <div className="relative">
-              <button 
+              <button
                 onClick={() => { setNotificationsOpen(!notificationsOpen); setProfileOpen(false); }}
-                className="h-10 w-10 flex items-center justify-center rounded-[12px] bg-muted/10 hover:bg-muted/20 transition-colors relative"
+                className="h-10 w-10 flex items-center justify-center rounded-[12px] bg-muted/10 hover:bg-muted/20 transition-colors relative cursor-pointer"
+                title="Notifications"
               >
                 <Bell className="h-5 w-5" strokeWidth={1.5} />
-                {/* Badge example */}
                 <span className="absolute top-2 right-2 h-2 w-2 rounded-full bg-red-500"></span>
               </button>
 
@@ -94,10 +103,10 @@ export function AppShell({ children, session }: { children: React.ReactNode; ses
               {notificationsOpen && (
                 <>
                   <div className="fixed inset-0 z-40" onClick={() => setNotificationsOpen(false)} />
-                  <div className="fixed sm:absolute top-16 sm:top-auto sm:mt-2 right-4 sm:right-0 left-4 sm:left-auto w-auto sm:w-80 bg-background rounded-[12px] shadow-lg z-50 overflow-hidden">
+                  <div className="fixed sm:absolute top-16 sm:top-auto sm:mt-2 right-4 sm:right-0 left-4 sm:left-auto w-auto sm:w-80 bg-background rounded-2xl shadow-xl z-50 overflow-hidden border-0">
                     <div className="p-3 bg-muted/5 flex items-center justify-between">
                       <span className="font-semibold text-sm">Notifications</span>
-                      <button className="text-xs text-muted hover:text-foreground">Mark read</button>
+                      <button className="text-xs text-muted hover:text-foreground cursor-pointer">Mark read</button>
                     </div>
                     <div className="max-h-[60vh] sm:max-h-80 overflow-y-auto">
                       <div className="p-4 text-center text-sm text-muted">No new notifications.</div>
@@ -108,9 +117,10 @@ export function AppShell({ children, session }: { children: React.ReactNode; ses
             </div>
 
             <div className="relative">
-              <button 
+              <button
                 onClick={() => { setProfileOpen(!profileOpen); setNotificationsOpen(false); }}
-                className="h-10 w-10 flex items-center justify-center rounded-[12px] bg-muted/10 hover:bg-muted/20 transition-colors"
+                className="h-10 w-10 flex items-center justify-center rounded-[12px] bg-muted/10 hover:bg-muted/20 transition-colors cursor-pointer"
+                title="User Profile"
               >
                 <span className="font-medium text-sm">{session.profile?.name?.charAt(0) || 'U'}</span>
               </button>
@@ -119,12 +129,12 @@ export function AppShell({ children, session }: { children: React.ReactNode; ses
               {profileOpen && (
                 <>
                   <div className="fixed inset-0 z-40" onClick={() => setProfileOpen(false)} />
-                  <div className="absolute right-0 mt-2 w-56 bg-background rounded-[12px] shadow-lg  z-50 overflow-hidden py-1 text-sm">
+                  <div className="absolute right-0 mt-2 w-56 bg-background rounded-2xl shadow-xl z-50 overflow-hidden py-1 text-sm border-0">
                     <div className="px-4 py-3 bg-muted/5">
                       <p className="font-medium truncate">{session.profile?.name}</p>
                       <p className="text-xs text-muted truncate">@{session.profile?.handle}</p>
                     </div>
-                    
+
                     <div className="py-1">
                       <Link href="/profile" className="flex items-center space-x-2 px-4 py-2 hover:bg-muted/10" onClick={() => setProfileOpen(false)}>
                         <Settings className="h-4 w-4" strokeWidth={1.5} />
@@ -136,11 +146,11 @@ export function AppShell({ children, session }: { children: React.ReactNode; ses
                       <div className="py-1 bg-muted/5">
                         <div className="px-4 py-1 text-xs font-medium text-muted uppercase tracking-wider">Switch Scope</div>
                         {session.roles.map(role => (
-                          <button 
-                            key={role.scope_id} 
+                          <button
+                            key={role.scope_id}
                             disabled={isSwitching}
                             onClick={() => handleScopeSwitch(role.scope_id!)}
-                            className="w-full text-left px-4 py-2 hover:bg-muted/10 flex items-center justify-between"
+                            className="w-full text-left px-4 py-2 hover:bg-muted/10 flex items-center justify-between cursor-pointer"
                           >
                             <span className="truncate">{role.scope_name}</span>
                             {session.activeScope?.id === role.scope_id && <span className="text-xs font-bold">✓</span>}
@@ -169,10 +179,13 @@ export function AppShell({ children, session }: { children: React.ReactNode; ses
                     )}
 
                     <div className="py-1">
-                      <Link href="/login" className="flex items-center space-x-2 px-4 py-2 hover:bg-muted/10 text-red-600" onClick={() => setProfileOpen(false)}>
+                      <button 
+                        onClick={() => { setProfileOpen(false); logout(); }} 
+                        className="w-full flex items-center space-x-2 px-4 py-2 hover:bg-muted/10 text-red-600 cursor-pointer"
+                      >
                         <LogOut className="h-4 w-4" strokeWidth={1.5} />
                         <span>Logout</span>
-                      </Link>
+                      </button>
                     </div>
                   </div>
                 </>
@@ -182,28 +195,35 @@ export function AppShell({ children, session }: { children: React.ReactNode; ses
         </header>
 
         {/* Scrollable Content */}
-        <main className="flex-1 overflow-auto bg-background pb-20 md:pb-0 relative">
+        <main className="flex-1 overflow-auto bg-background pb-24 md:pb-0 relative">
           {children}
         </main>
       </div>
 
-      {/* Mobile Bottom Tabs */}
-      <nav className="md:hidden fixed bottom-0 left-0 right-0 z-50 flex h-[4.5rem] items-center justify-around bg-background/90 backdrop-blur-md pb-safe border-t-0 shadow-[0_-1px_3px_rgba(0,0,0,0.05)] dark:shadow-[0_-1px_3px_rgba(255,255,255,0.02)]">
+      {/* Mobile Bottom Tabs — YouTube Style Bar */}
+      <nav className="md:hidden fixed bottom-0 left-0 right-0 z-50 flex h-16 items-center justify-around bg-background/95 backdrop-blur-lg pb-safe border-0 shadow-[0_-2px_10px_rgba(0,0,0,0.04)] select-none">
         {navItems.map((item) => {
           const Icon = item.icon;
-          const isActive = pathname.startsWith(item.href);
+          const active = isItemActive(item.href);
           return (
             <Link
               key={item.href}
               href={item.href}
-              className={`flex flex-col items-center justify-center space-y-1 p-2 w-full h-full transition-colors ${
-                isActive ? 'text-foreground' : 'text-muted hover:text-foreground'
+              className={`flex flex-col items-center justify-center flex-1 h-full py-1 transition-all ${
+                active ? 'text-foreground' : 'text-muted hover:text-foreground'
               }`}
             >
-              <div className={`flex items-center justify-center h-8 w-8 rounded-full ${isActive ? 'bg-muted/10' : ''}`}>
-                <Icon className="h-5 w-5" strokeWidth={1.5} />
+              {/* YouTube Style Active Pill */}
+              <div className={`flex items-center justify-center px-4 py-1 rounded-full transition-all ${
+                active ? 'bg-muted/15 text-foreground' : 'bg-transparent text-muted'
+              }`}>
+                <Icon className={`h-5 w-5 transition-transform ${active ? 'stroke-[2.2] scale-105 text-foreground' : 'stroke-[1.5]'}`} />
               </div>
-              <span className={`text-[10px] ${isActive ? 'font-semibold' : 'font-medium'}`}>{item.label}</span>
+              <span className={`text-[10px] mt-0.5 tracking-tight transition-colors ${
+                active ? 'font-bold text-foreground' : 'font-medium text-muted'
+              }`}>
+                {item.label}
+              </span>
             </Link>
           );
         })}
@@ -213,13 +233,13 @@ export function AppShell({ children, session }: { children: React.ReactNode; ses
       {requestsOpen && (
         <div className="fixed inset-0 z-[60] flex items-center justify-center p-4">
           <div className="absolute inset-0 bg-background/80 backdrop-blur-sm" onClick={() => setRequestsOpen(false)} />
-          <div className="relative bg-background rounded-[12px] shadow-2xl  w-full max-w-2xl max-h-[80vh] flex flex-col overflow-hidden">
-            <div className="p-4  flex items-center justify-between">
-              <h2 className="font-semibold">Cross-Team Requests</h2>
-              <button onClick={() => setRequestsOpen(false)} className="text-muted hover:text-foreground">✕</button>
+          <div className="relative bg-background rounded-2xl shadow-2xl w-full max-w-2xl max-h-[80vh] flex flex-col overflow-hidden border-0">
+            <div className="p-4 bg-muted/5 flex items-center justify-between">
+              <h2 className="font-semibold text-sm">Cross-Team Requests</h2>
+              <button onClick={() => setRequestsOpen(false)} className="text-muted hover:text-foreground cursor-pointer">✕</button>
             </div>
-            <div className="p-8 text-center text-muted flex-1 overflow-y-auto">
-              Requests UI goes here
+            <div className="p-8 text-center text-muted flex-1 overflow-y-auto text-sm">
+              No pending cross-team requests.
             </div>
           </div>
         </div>

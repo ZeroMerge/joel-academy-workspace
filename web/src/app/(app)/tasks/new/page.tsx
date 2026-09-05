@@ -1,4 +1,4 @@
-import * as React from 'react';
+﻿import * as React from 'react';
 import Link from 'next/link';
 import { createClient } from '@/lib/supabase/server';
 import { redirect } from 'next/navigation';
@@ -8,6 +8,7 @@ import { Label } from '@/components/ui/label';
 import { AssignmentPicker } from '@/components/ui/assignment-picker';
 import { createTask } from '../actions';
 import { getSessionContext } from '@/lib/session';
+import { BookOpen, Key, Lock, FolderOpen } from 'lucide-react';
 
 export default async function NewTaskPage() {
   const supabase = await createClient();
@@ -16,8 +17,6 @@ export default async function NewTaskPage() {
   if (!session) redirect('/login');
   if (session.activeRole === 'contributor') redirect('/tasks');
 
-  // Check if user is lead/admin/exec to be able to create tasks
-  // For v1, we can enforce in RLS/backend, but let's just fetch scopes they lead
   const { data: roleScopes } = await supabase
     .from('user_role_scopes')
     .select('base_role, scope_id')
@@ -33,17 +32,24 @@ export default async function NewTaskPage() {
     );
   }
 
-  // Fetch data for dropdowns, including user analytics
-  const [{ data: users }, { data: scopes }, { data: taskTypes }] = await Promise.all([
+  // Fetch data for dropdowns, including user analytics, resources, and vault items
+  const [
+    { data: users }, 
+    { data: scopes }, 
+    { data: taskTypes },
+    { data: availableResources },
+    { data: availableVaultItems }
+  ] = await Promise.all([
     supabase
       .from('users')
       .select('id, handle, name, analytics:user_analytics(current_load, delivery_rate_pct)')
       .eq('is_active', true),
     supabase.from('scopes').select('id, name'),
-    supabase.from('task_types').select('id, name')
+    supabase.from('task_types').select('id, name'),
+    supabase.from('scope_resources').select('id, title, category, scope_id'),
+    supabase.from('vault_resources').select('id, name, type, owning_scope_id, scope:scopes(name)')
   ]);
   
-  // Transform the one-to-one analytics relation (returns as array from Supabase by default unless .single() is used in a join, but we can just map it)
   const usersWithAnalytics = (users || []).map(u => ({
     id: u.id,
     handle: u.handle,
@@ -97,6 +103,7 @@ export default async function NewTaskPage() {
                 id="scope_id" 
                 name="scope_id" 
                 required
+                defaultValue={session.activeScope?.id || ''}
                 className="flex h-10 w-full rounded-md bg-muted/10 px-3 py-2 text-sm text-foreground outline-none focus:ring-2 focus:ring-foreground"
               >
                 <option value="">Select scope...</option>
@@ -113,6 +120,53 @@ export default async function NewTaskPage() {
               <Input id="deadline" name="deadline" type="date" />
             </div>
           </div>
+
+          {/* Section 7.3: Tag Resources (Informational Links) */}
+          {availableResources && availableResources.length > 0 && (
+            <div className="space-y-2 pt-2">
+              <div className="flex items-center space-x-2">
+                <BookOpen className="h-4 w-4 text-muted" />
+                <Label className="text-xs font-semibold uppercase tracking-wider text-muted">
+                  Attach Resources (Informational Links)
+                </Label>
+              </div>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 max-h-40 overflow-y-auto p-2 bg-muted/5 rounded-xl">
+                {availableResources.map(res => (
+                  <label key={res.id} className="flex items-center space-x-2 p-2 rounded-lg hover:bg-muted/10 cursor-pointer text-xs transition-colors">
+                    <input type="checkbox" name="tagged_resource_ids" value={res.id} className="rounded text-foreground focus:ring-0" />
+                    <span className="font-medium truncate">{res.title}</span>
+                    <span className="text-[10px] text-muted">({res.category || 'General'})</span>
+                  </label>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Section 7.3: Attach Vault Credentials (Permission-Bearing) */}
+          {availableVaultItems && availableVaultItems.length > 0 && (
+            <div className="space-y-2 pt-2">
+              <div className="flex items-center space-x-2">
+                <Key className="h-4 w-4 text-amber-500" />
+                <Label className="text-xs font-semibold uppercase tracking-wider text-amber-600 dark:text-amber-400">
+                  Attach Vault Credentials (Automatic View Grant)
+                </Label>
+              </div>
+              <p className="text-[11px] text-muted">
+                The assignee will automatically be authorized to view these credentials while holding this task.
+              </p>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 max-h-40 overflow-y-auto p-2 bg-muted/5 rounded-xl">
+                {availableVaultItems.map(v => (
+                  <label key={v.id} className="flex items-center space-x-2 p-2 rounded-lg hover:bg-muted/10 cursor-pointer text-xs transition-colors">
+                    <input type="checkbox" name="tagged_vault_ids" value={v.id} className="rounded text-foreground focus:ring-0" />
+                    <div className="flex items-center space-x-1.5 min-w-0">
+                      {v.type === 'drive_folder' ? <FolderOpen className="h-3.5 w-3.5 text-blue-500 shrink-0" /> : <Lock className="h-3.5 w-3.5 text-amber-500 shrink-0" />}
+                      <span className="font-medium truncate">{v.name}</span>
+                    </div>
+                  </label>
+                ))}
+              </div>
+            </div>
+          )}
         </div>
         
         <div className="pt-4 flex justify-end space-x-3 ">

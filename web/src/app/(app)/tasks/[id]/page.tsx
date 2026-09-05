@@ -3,6 +3,8 @@ import { createClient } from '@/lib/supabase/server';
 import { notFound } from 'next/navigation';
 import { TaskControls } from './TaskControls';
 import { TaskMilestones } from './TaskMilestones';
+import { TaskTaggedResources } from './TaskTaggedResources';
+import { getSessionContext } from '@/lib/session';
 import Link from 'next/link';
 
 export default async function TaskDetailPage({ params }: { params: { id: string } }) {
@@ -50,11 +52,26 @@ export default async function TaskDetailPage({ params }: { params: { id: string 
     .eq('task_id', taskId)
     .order('order_index', { ascending: true });
 
-  const workflow = (task.task_type as any)?.workflow as any;
-  const validNextStatuses = workflow?.transitions?.[task.status] || [];
-  
-  const isAssignee = userId === (task.assignee as any)?.id;
-  const isReviewer = userId === (task.reviewer as any)?.id;
+  const session = await getSessionContext();
+
+  let taggedResourceIds: string[] = [];
+  let taggedVaultIds: string[] = [];
+  try {
+    const meta = JSON.parse(task.notes || '{}');
+    taggedResourceIds = meta.tagged_resource_ids || [];
+    taggedVaultIds = meta.tagged_vault_ids || [];
+  } catch {}
+
+  const [taggedResourcesRes, taggedVaultRes] = await Promise.all([
+    taggedResourceIds.length > 0
+      ? supabase.from('scope_resources').select('id, title, url, category').in('id', taggedResourceIds)
+      : Promise.resolve({ data: [] }),
+    taggedVaultIds.length > 0
+      ? supabase.from('vault_resources').select('id, name, type, description').in('id', taggedVaultIds)
+      : Promise.resolve({ data: [] })
+  ]);
+
+  const canAccessVault = isAssignee || isReviewer || !!session?.isAdmin;
 
   return (
     <div className="p-4 sm:p-8 max-w-4xl mx-auto space-y-8">
@@ -130,6 +147,13 @@ export default async function TaskDetailPage({ params }: { params: { id: string 
           </a>
         </div>
       )}
+
+      {/* Tagged Resources & Vault Items (Section 7.3) */}
+      <TaskTaggedResources 
+        resources={taggedResourcesRes.data || []}
+        vaultItems={taggedVaultRes.data || []}
+        canAccessVault={canAccessVault}
+      />
 
       <div className="divider-b pt-4" />
 

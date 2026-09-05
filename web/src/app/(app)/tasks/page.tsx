@@ -12,19 +12,33 @@ export default async function TasksPage() {
   
   if (!session) return null;
 
-  // We need to fetch all workflow statuses from the active scope's task_types to get the columns
-  // For simplicity right now, we can extract unique statuses from the tasks themselves or fetch task_types.
-  // Actually, we should fetch task_types for the active scope.
+  const tasksPromise = supabase
+    .from('tasks')
+    .select(`
+      id,
+      title,
+      status,
+      priority,
+      deadline,
+      created_at,
+      assignee:users!tasks_assignee_id_fkey(handle, avatar_url),
+      scope:scopes(name)
+    `)
+    .order('created_at', { ascending: false });
+
+  const taskTypesPromise = session.activeScope 
+    ? supabase.from('task_types').select('workflow') 
+    : Promise.resolve({ data: null, error: null });
+
+  const [tasksRes, taskTypesRes] = await Promise.all([tasksPromise, taskTypesPromise]);
+
+  const tasks = tasksRes.data;
+  const taskTypes = taskTypesRes.data;
+
   let columns: string[] = [];
-  
-  if (session.activeScope) {
-    const { data: taskTypes } = await supabase
-      .from('task_types')
-      .select('workflow');
-    
-    // Aggregate unique columns from workflows (assuming all task types in the scope share roughly the same stages)
+  if (taskTypes) {
     const colSet = new Set<string>();
-    taskTypes?.forEach(tt => {
+    taskTypes.forEach(tt => {
       const wf = tt.workflow as any;
       if (wf && wf.statuses) {
         wf.statuses.forEach((s: string) => colSet.add(s));
@@ -37,25 +51,6 @@ export default async function TasksPage() {
   if (columns.length === 0) {
     columns = ['draft', 'assigned', 'in_progress', 'in_review', 'approved'];
   }
-
-  // Fetch tasks
-  const { data: tasks, error } = await supabase
-    .from('tasks')
-    .select(`
-      id,
-      title,
-      status,
-      priority,
-      deadline,
-      created_at,
-      assignee:users!tasks_assignee_id_fkey(handle, avatar_url),
-      scope:scopes(name)
-    `)
-    // If not executive/admin, we might only fetch active scope tasks.
-    // If lead, fetch active scope tasks.
-    // If contributor, fetch only assigned tasks.
-    // The RLS policy should already handle this filtering!
-    .order('created_at', { ascending: false });
 
   return (
     <div className="p-4 sm:p-8 max-w-[1400px] mx-auto space-y-6">

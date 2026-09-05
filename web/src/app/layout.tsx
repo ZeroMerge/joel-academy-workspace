@@ -22,6 +22,10 @@ export const metadata: Metadata = {
     statusBarStyle: "default",
     title: "Joel Academy",
   },
+  icons: {
+    icon: "/logo.jpg",
+    apple: "/logo.jpg",
+  }
 };
 
 export default function RootLayout({ children }: LayoutProps<"/">) {

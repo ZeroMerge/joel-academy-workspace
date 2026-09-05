@@ -1,3 +1,4 @@
+import { cache } from 'react';
 import { createClient } from '@/lib/supabase/server';
 
 export type RoleInfo = {
@@ -20,7 +21,7 @@ export type SessionContext = {
   canSeeReports: boolean;
 };
 
-export async function getSessionContext(): Promise<SessionContext | null> {
+export const getSessionContext = cache(async (): Promise<SessionContext | null> => {
   const supabase = await createClient();
   const { data: userData, error: authError } = await supabase.auth.getUser();
   
@@ -84,4 +85,4 @@ export async function getSessionContext(): Promise<SessionContext | null> {
     canSeeCapacity: roleLevel >= 2,
     canSeeReports: roleLevel >= 2,
   };
-}
+});
