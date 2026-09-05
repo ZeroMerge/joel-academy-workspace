@@ -30,7 +30,7 @@ function SortableTaskCard({ task, session }: { task: any, session: SessionContex
       style={style}
       {...attributes}
       {...listeners}
-      className={`p-3 bg-muted/5 hover:bg-muted/10 transition-colors cursor-pointer group ${isDragging ? 'shadow-lg z-50 bg-background border border-divider/20' : ''}`}
+      className={`p-3 bg-muted/5 hover:bg-muted/10 rounded-xl transition-colors cursor-pointer group ${isDragging ? 'shadow-xl z-50 bg-background' : ''}`}
       onClick={(e) => {
         // Prevent click if dragging
         if (isDragging) return;
@@ -38,6 +38,25 @@ function SortableTaskCard({ task, session }: { task: any, session: SessionContex
       }}
     >
       <h4 className="font-semibold text-sm leading-snug">{task.title}</h4>
+      {task.crossTeam && (
+        <div className="mt-1.5 flex items-center">
+          {task.crossTeam.direction === 'incoming' && (
+            <span className="inline-flex items-center px-1.5 py-0.5 rounded-md text-[10px] font-semibold bg-blue-500/10 text-blue-600 dark:text-blue-400">
+              From {task.crossTeam.partnerScopeName}
+            </span>
+          )}
+          {task.crossTeam.direction === 'outgoing' && (
+            <span className="inline-flex items-center px-1.5 py-0.5 rounded-md text-[10px] font-semibold bg-amber-500/10 text-amber-600 dark:text-amber-400">
+              Pinged {task.crossTeam.partnerScopeName}
+            </span>
+          )}
+          {task.crossTeam.direction === 'cross_team' && (
+            <span className="inline-flex items-center px-1.5 py-0.5 rounded-md text-[10px] font-semibold bg-purple-500/10 text-purple-600 dark:text-purple-400">
+              {task.crossTeam.partnerScopeName}
+            </span>
+          )}
+        </div>
+      )}
       <div className="flex items-center justify-between mt-2">
         <span className="text-xs font-medium text-muted">
           {session.activeRole !== 'contributor' && task.assignee?.handle ? `@${task.assignee.handle}` : ''}

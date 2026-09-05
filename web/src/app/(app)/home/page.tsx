@@ -1,4 +1,4 @@
-﻿import * as React from 'react';
+import * as React from 'react';
 import { createClient } from '@/lib/supabase/server';
 import { getSessionContext } from '@/lib/session';
 import { 
@@ -84,7 +84,9 @@ export default async function HomePage() {
                   <ArrowRightLeft className="h-5 w-5 shrink-0" strokeWidth={1.5} />
                   <span className="font-medium text-xs sm:text-sm">You have {pendingRequestsCount} pending cross-team request{pendingRequestsCount > 1 ? 's' : ''}.</span>
                 </div>
-                <span className="text-xs font-semibold text-red-700 dark:text-red-400 shrink-0">Review in header</span>
+                <Link href="/tasks?scope_filter=cross-team" className="text-xs font-semibold text-red-700 dark:text-red-400 shrink-0 hover:underline">
+                  Review Tasks →
+                </Link>
               </div>
             )}
             

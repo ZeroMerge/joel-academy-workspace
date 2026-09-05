@@ -1,4 +1,4 @@
-﻿import * as React from 'react';
+import * as React from 'react';
 import Link from 'next/link';
 import { createClient } from '@/lib/supabase/server';
 import { redirect } from 'next/navigation';
@@ -9,6 +9,7 @@ import { AssignmentPicker } from '@/components/ui/assignment-picker';
 import { createTask } from '../actions';
 import { getSessionContext } from '@/lib/session';
 import { BookOpen, Key, Lock, FolderOpen } from 'lucide-react';
+import { CrossTeamCollabSection } from '@/components/tasks/CrossTeamCollabSection';
 
 export default async function NewTaskPage() {
   const supabase = await createClient();
@@ -68,7 +69,7 @@ export default async function NewTaskPage() {
         <div className="space-y-4">
           <div className="space-y-2">
             <Label htmlFor="title">Title</Label>
-            <Input id="title" name="title" required placeholder="E.g., Draft Q3 Marketing Copy" />
+            <Input id="title" name="title" required placeholder="E.g., Draft Q3 Marketing Copy" className="rounded-xl bg-muted/10 border-0" />
           </div>
 
           <div className="space-y-2">
@@ -76,7 +77,7 @@ export default async function NewTaskPage() {
             <textarea 
               id="description" 
               name="description" 
-              className="flex w-full rounded-md bg-muted/10 px-3 py-2 text-sm text-foreground outline-none transition-all placeholder:text-muted focus:bg-muted/20 focus:ring-2 focus:ring-foreground min-h-[100px]"
+              className="flex w-full rounded-xl bg-muted/10 px-3 py-2 text-sm text-foreground outline-none transition-all placeholder:text-muted focus:bg-muted/20 focus:ring-2 focus:ring-foreground min-h-[100px]"
               placeholder="Provide clear requirements..."
             />
           </div>
@@ -88,7 +89,7 @@ export default async function NewTaskPage() {
                 id="task_type_id" 
                 name="task_type_id" 
                 required
-                className="flex h-10 w-full rounded-md bg-muted/10 px-3 py-2 text-sm text-foreground outline-none focus:ring-2 focus:ring-foreground"
+                className="flex h-10 w-full rounded-xl bg-muted/10 px-3 py-2 text-sm text-foreground outline-none focus:ring-2 focus:ring-foreground"
               >
                 <option value="">Select type...</option>
                 {taskTypes?.map(type => (
@@ -97,29 +98,42 @@ export default async function NewTaskPage() {
               </select>
             </div>
 
-            <div className="space-y-2">
-              <Label htmlFor="scope_id">Scope</Label>
-              <select 
-                id="scope_id" 
-                name="scope_id" 
-                required
-                defaultValue={session.activeScope?.id || ''}
-                className="flex h-10 w-full rounded-md bg-muted/10 px-3 py-2 text-sm text-foreground outline-none focus:ring-2 focus:ring-foreground"
-              >
-                <option value="">Select scope...</option>
-                {scopes?.map(scope => (
-                  <option key={scope.id} value={scope.id}>{scope.name}</option>
-                ))}
-              </select>
-            </div>
+            {session.activeRole === 'lead' || (session.activeScope && !session.isAdmin) ? (
+              <div className="space-y-2">
+                <Label>Team</Label>
+                <input type="hidden" name="scope_id" value={session.activeScope?.id || ''} />
+                <div className="flex h-10 w-full items-center rounded-xl bg-muted/10 px-3 py-2 text-sm font-medium text-foreground">
+                  {session.activeScope?.name || 'My Team'}
+                </div>
+              </div>
+            ) : (
+              <div className="space-y-2">
+                <Label htmlFor="scope_id">Scope</Label>
+                <select 
+                  id="scope_id" 
+                  name="scope_id" 
+                  required
+                  defaultValue={session.activeScope?.id || ''}
+                  className="flex h-10 w-full rounded-xl bg-muted/10 px-3 py-2 text-sm text-foreground outline-none focus:ring-2 focus:ring-foreground"
+                >
+                  <option value="">Select scope...</option>
+                  {scopes?.map(scope => (
+                    <option key={scope.id} value={scope.id}>{scope.name}</option>
+                  ))}
+                </select>
+              </div>
+            )}
 
             <AssignmentPicker name="assignee_id" users={usersWithAnalytics as any} required />
             
             <div className="space-y-2">
               <Label htmlFor="deadline">Deadline</Label>
-              <Input id="deadline" name="deadline" type="date" />
+              <Input id="deadline" name="deadline" type="date" className="rounded-xl bg-muted/10 border-0" />
             </div>
           </div>
+
+          {/* Cross-Team Collaboration & Ping */}
+          <CrossTeamCollabSection scopes={scopes || []} currentScopeId={session.activeScope?.id} />
 
           {/* Section 7.3: Tag Resources (Informational Links) */}
           {availableResources && availableResources.length > 0 && (

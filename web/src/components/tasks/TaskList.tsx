@@ -37,7 +37,24 @@ export function TaskList({ tasks, session }: { tasks: any[], session: SessionCon
             return (
               <tr key={task.id} className="group hover:bg-muted/5 transition-colors cursor-pointer" onClick={() => router.push(`/tasks/${task.id}`)}>
                 <td className="py-3 pl-4 pr-3">
-                  <span className="font-semibold">{task.title}</span>
+                  <div className="flex items-center space-x-2">
+                    <span className="font-semibold">{task.title}</span>
+                    {task.crossTeam?.direction === 'incoming' && (
+                      <span className="inline-flex items-center px-1.5 py-0.5 rounded-md text-[10px] font-semibold bg-blue-500/10 text-blue-600 dark:text-blue-400 shrink-0">
+                        From {task.crossTeam.partnerScopeName}
+                      </span>
+                    )}
+                    {task.crossTeam?.direction === 'outgoing' && (
+                      <span className="inline-flex items-center px-1.5 py-0.5 rounded-md text-[10px] font-semibold bg-amber-500/10 text-amber-600 dark:text-amber-400 shrink-0">
+                        Pinged {task.crossTeam.partnerScopeName}
+                      </span>
+                    )}
+                    {task.crossTeam?.direction === 'cross_team' && (
+                      <span className="inline-flex items-center px-1.5 py-0.5 rounded-md text-[10px] font-semibold bg-purple-500/10 text-purple-600 dark:text-purple-400 shrink-0">
+                        {task.crossTeam.partnerScopeName}
+                      </span>
+                    )}
+                  </div>
                 </td>
                 <td className="py-3 px-3">
                   <span className="inline-flex items-center text-xs font-semibold uppercase tracking-wider text-muted">

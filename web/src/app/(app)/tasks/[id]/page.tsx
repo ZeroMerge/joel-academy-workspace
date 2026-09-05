@@ -6,6 +6,7 @@ import { TaskMilestones } from './TaskMilestones';
 import { TaskTaggedResources } from './TaskTaggedResources';
 import { getSessionContext } from '@/lib/session';
 import Link from 'next/link';
+import { TaskCrossTeamBanner } from '@/components/tasks/TaskCrossTeamBanner';
 
 export default async function TaskDetailPage({ params }: { params: { id: string } }) {
   const supabase = await createClient();
@@ -13,10 +14,6 @@ export default async function TaskDetailPage({ params }: { params: { id: string 
   const userId = userData?.user?.id;
   
   // Await params in next 15 if it's treated as a Promise.
-  // We'll extract id normally, assuming Next 14/15 standard behavior.
-  // Actually, Next 15 requires `params` to be awaited. 
-  // Let's use `const { id } = await params;` just in case it's Next 15.
-  // To avoid ts errors if `params` isn't a promise in our types, let's just cast.
   const resolvedParams = await (params as any);
   const taskId = resolvedParams.id;
 
@@ -37,6 +34,12 @@ export default async function TaskDetailPage({ params }: { params: { id: string 
     notFound();
   }
 
+  const { data: crossTeamRequest } = await supabase
+    .from('cross_team_requests')
+    .select('*, origin_scope:scopes!origin_scope_id(name), target_scope:scopes!target_scope_id(name), requester:users!cross_team_requests_requested_by_fkey(handle, name)')
+    .eq('resulting_task_id', taskId)
+    .maybeSingle();
+
   const { data: statusLog } = await supabase
     .from('task_status_log')
     .select(`
@@ -53,6 +56,11 @@ export default async function TaskDetailPage({ params }: { params: { id: string 
     .order('order_index', { ascending: true });
 
   const session = await getSessionContext();
+
+  const isAssignee = userId === task.assignee_id;
+  const isReviewer = userId === task.reviewer_id;
+  const workflow = (task.task_type as any)?.workflow;
+  const validNextStatuses = workflow?.transitions?.[task.status] || [];
 
   let taggedResourceIds: string[] = [];
   let taggedVaultIds: string[] = [];
@@ -92,6 +100,14 @@ export default async function TaskDetailPage({ params }: { params: { id: string 
           {task.title}
         </h1>
       </div>
+
+      {crossTeamRequest && (
+        <TaskCrossTeamBanner 
+          request={crossTeamRequest}
+          currentUserScopeId={session?.activeScope?.id}
+          isLeadOrAdmin={!!session?.isAdmin || session?.activeRole === 'lead' || session?.activeRole === 'executive'}
+        />
+      )}
 
       <div className="divider-b" />
 

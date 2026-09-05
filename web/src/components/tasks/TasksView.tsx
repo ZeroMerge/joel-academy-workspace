@@ -29,6 +29,7 @@ export function TasksView({ session, initialTasks, columns }: { session: Session
 
   const [assigneeFilter, setAssigneeFilter] = useState<string | null>(searchParams.get('assignee'));
   const [statusFilter, setStatusFilter] = useState<string | null>(searchParams.get('status'));
+  const [scopeFilter, setScopeFilter] = useState<string | null>(searchParams.get('scope_filter'));
 
   useEffect(() => {
     if (typeof window !== 'undefined') {
@@ -37,23 +38,26 @@ export function TasksView({ session, initialTasks, columns }: { session: Session
   }, [view]);
 
   // Sync filters to URL
-  const updateUrl = (newView: ViewMode, newAssignee: string | null, newStatus: string | null) => {
+  const updateUrl = (newView: ViewMode, newAssignee: string | null, newStatus: string | null, newScopeFilter: string | null) => {
     const params = new URLSearchParams();
     if (newView) params.set('view', newView);
     if (newAssignee) params.set('assignee', newAssignee);
     if (newStatus) params.set('status', newStatus);
+    if (newScopeFilter) params.set('scope_filter', newScopeFilter);
     router.replace(`/tasks?${params.toString()}`);
   };
 
   const handleViewChange = (v: ViewMode) => {
     setView(v);
-    updateUrl(v, assigneeFilter, statusFilter);
+    updateUrl(v, assigneeFilter, statusFilter, scopeFilter);
   };
 
   // Filter tasks
   const filteredTasks = initialTasks.filter(t => {
     if (assigneeFilter && t.assignee?.handle !== assigneeFilter) return false;
     if (statusFilter && t.status !== statusFilter) return false;
+    if (scopeFilter === 'team' && t.crossTeam) return false;
+    if (scopeFilter === 'cross-team' && !t.crossTeam) return false;
     return true;
   });
 
@@ -96,7 +100,7 @@ export function TasksView({ session, initialTasks, columns }: { session: Session
               onChange={(e) => {
                 const val = e.target.value || null;
                 setAssigneeFilter(val);
-                updateUrl(view, val, statusFilter);
+                updateUrl(view, val, statusFilter, scopeFilter);
               }}
             >
               <option value="">All Assignees</option>
@@ -106,13 +110,29 @@ export function TasksView({ session, initialTasks, columns }: { session: Session
             </select>
           )}
 
+          {session.activeScope && (
+            <select
+              className="text-sm bg-muted/5 rounded-[12px] px-3 py-2 outline-none focus:ring-1 focus:ring-foreground"
+              value={scopeFilter || ''}
+              onChange={(e) => {
+                const val = e.target.value || null;
+                setScopeFilter(val);
+                updateUrl(view, assigneeFilter, statusFilter, val);
+              }}
+            >
+              <option value="">All Tasks</option>
+              <option value="team">Team Only</option>
+              <option value="cross-team">Cross-Team Only</option>
+            </select>
+          )}
+
           <select 
             className="text-sm bg-muted/5  rounded-[12px] px-3 py-2 outline-none focus:ring-1 focus:ring-foreground"
             value={statusFilter || ''}
             onChange={(e) => {
               const val = e.target.value || null;
               setStatusFilter(val);
-              updateUrl(view, assigneeFilter, val);
+              updateUrl(view, assigneeFilter, val, scopeFilter);
             }}
           >
             <option value="">All Statuses</option>

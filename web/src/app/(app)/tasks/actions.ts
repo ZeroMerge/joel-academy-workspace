@@ -5,6 +5,7 @@ import { redirect } from 'next/navigation';
 import { createClient } from '@/lib/supabase/server';
 import { Database } from '@/types/database.types';
 import { getSessionContext } from '@/lib/session';
+import { sendNotification } from '@/lib/notifications';
 
 type TaskInsert = Database['public']['Tables']['tasks']['Insert'];
 
@@ -13,6 +14,8 @@ export async function createTask(dataOrFormData: FormData | {
   description?: string;
   task_type_id: string;
   scope_id: string;
+  collaborating_scope_id?: string | null;
+  cross_team_note?: string | null;
   assignee_id: string;
   reviewer_id?: string;
   priority?: string;
@@ -30,6 +33,8 @@ export async function createTask(dataOrFormData: FormData | {
       description: dataOrFormData.get('description') as string,
       task_type_id: dataOrFormData.get('task_type_id') as string,
       scope_id: dataOrFormData.get('scope_id') as string,
+      collaborating_scope_id: (dataOrFormData.get('collaborating_scope_id') as string) || null,
+      cross_team_note: (dataOrFormData.get('cross_team_note') as string) || null,
       assignee_id: dataOrFormData.get('assignee_id') as string,
       reviewer_id: dataOrFormData.get('reviewer_id') as string,
       priority: dataOrFormData.get('priority') as string,
@@ -65,10 +70,18 @@ export async function createTask(dataOrFormData: FormData | {
   const workflow = taskType.workflow as any;
   const initialStatus = workflow?.statuses?.[0] || 'Assigned';
 
+  // Enforce team scope for Leads
+  let scopeId = data.scope_id;
+  if (session.activeRole === 'lead' || (session.activeScope && !session.isAdmin)) {
+    scopeId = session.activeScope?.id || scopeId;
+  }
+
   const notesMeta = JSON.stringify({
     description: data.description || '',
     tagged_resource_ids: data.tagged_resource_ids || [],
-    tagged_vault_ids: data.tagged_vault_ids || []
+    tagged_vault_ids: data.tagged_vault_ids || [],
+    collaborating_scope_id: data.collaborating_scope_id || null,
+    cross_team_note: data.cross_team_note || null,
   });
 
   const taskData: any = {
@@ -76,7 +89,7 @@ export async function createTask(dataOrFormData: FormData | {
     description: data.description || null,
     notes: notesMeta,
     task_type_id: data.task_type_id,
-    scope_id: data.scope_id,
+    scope_id: scopeId,
     assignee_id: data.assignee_id,
     reviewer_id: data.reviewer_id || session.user.id, // defaults to creator
     created_by: session.user.id,
@@ -93,6 +106,50 @@ export async function createTask(dataOrFormData: FormData | {
 
   if (insertError) {
     return { error: insertError.message };
+  }
+
+  // Cross-Team Ping & Collaboration Infrastructure
+  if (data.collaborating_scope_id) {
+    try {
+      // 1. Create entry in cross_team_requests
+      const { data: crossReq } = await supabase
+        .from('cross_team_requests')
+        .insert({
+          origin_scope_id: scopeId,
+          target_scope_id: data.collaborating_scope_id,
+          requested_by: session.user.id,
+          title: data.title,
+          description: data.cross_team_note || data.description || 'Cross-team task collaboration request',
+          status: 'pending',
+          resulting_task_id: newTask.id,
+        })
+        .select()
+        .single();
+
+      // 2. Query Leads of target team
+      const { data: targetLeads } = await supabase
+        .from('user_role_scopes')
+        .select('user_id')
+        .eq('scope_id', data.collaborating_scope_id)
+        .eq('base_role', 'lead');
+
+      // 3. Ping each Lead via in-app notification
+      if (targetLeads && targetLeads.length > 0) {
+        const teamName = session.activeScope?.name || 'A team';
+        for (const lead of targetLeads) {
+          await sendNotification(lead.user_id, 'cross_team_ping', {
+            title: `Cross-Team Request: ${data.title}`,
+            message: `${teamName} has pinged your team to collaborate on task "${data.title}".`,
+            link: `/tasks/${newTask.id}`,
+            task_id: newTask.id,
+            origin_scope_id: scopeId,
+            request_id: crossReq?.id,
+          });
+        }
+      }
+    } catch (crossErr) {
+      console.error('Failed to dispatch cross-team request notification:', crossErr);
+    }
   }
 
   // Section 7.3: Automatic Task-Linked Vault Grants
@@ -119,10 +176,60 @@ export async function createTask(dataOrFormData: FormData | {
 
   revalidatePath('/tasks');
   revalidatePath('/resources');
+  revalidatePath('/home');
   if (isFormData) {
     redirect('/tasks');
   }
   return { data: newTask };
+}
+
+export async function respondToCrossTeamRequest(requestId: string, status: 'accepted' | 'declined') {
+  const supabase = await createClient();
+  const session = await getSessionContext();
+  if (!session) return { error: 'Not authenticated' };
+
+  const { data: req, error: fetchErr } = await supabase
+    .from('cross_team_requests')
+    .select('*, origin_scope:scopes!origin_scope_id(name)')
+    .eq('id', requestId)
+    .single();
+
+  if (fetchErr || !req) return { error: 'Request not found' };
+
+  // Only Lead or Admin of target scope can respond
+  const isTargetLead = session.isAdmin || (session.activeScope?.id === req.target_scope_id && (session.activeRole === 'lead' || session.activeRole === 'executive'));
+  if (!isTargetLead) {
+    return { error: 'Not authorized to respond to this request' };
+  }
+
+  const { error: updateErr } = await supabase
+    .from('cross_team_requests')
+    .update({
+      status,
+      resolved_at: new Date().toISOString(),
+      resolved_by: session.user.id
+    })
+    .eq('id', requestId);
+
+  if (updateErr) return { error: updateErr.message };
+
+  // Notify original requester
+  if (req.requested_by) {
+    await sendNotification(req.requested_by, 'cross_team_response', {
+      title: `Collaboration ${status === 'accepted' ? 'Accepted' : 'Declined'}: ${req.title}`,
+      message: `${session.user.name || session.user.handle || 'The Lead'} ${status} your cross-team request for "${req.title}".`,
+      link: req.resulting_task_id ? `/tasks/${req.resulting_task_id}` : '/tasks',
+      task_id: req.resulting_task_id,
+      status
+    });
+  }
+
+  revalidatePath('/tasks');
+  if (req.resulting_task_id) {
+    revalidatePath(`/tasks/${req.resulting_task_id}`);
+  }
+  revalidatePath('/home');
+  return { success: true };
 }
 
 export async function updateTaskStatus(taskId: string, newStatus: string, submissionLink?: string) {

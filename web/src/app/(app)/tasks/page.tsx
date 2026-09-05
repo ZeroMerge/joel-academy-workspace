@@ -12,28 +12,117 @@ export default async function TasksPage() {
   
   if (!session) return null;
 
-  const tasksPromise = supabase
-    .from('tasks')
-    .select(`
-      id,
-      title,
-      status,
-      priority,
-      deadline,
-      created_at,
-      assignee:users!tasks_assignee_id_fkey(handle, avatar_url),
-      scope:scopes(name)
-    `)
-    .order('created_at', { ascending: false });
+  let tasks: any[] = [];
 
-  const taskTypesPromise = session.activeScope 
+  if (session.activeScope) {
+    // 1. Fetch team's primary tasks
+    const teamTasksPromise = supabase
+      .from('tasks')
+      .select(`
+        id,
+        title,
+        status,
+        priority,
+        deadline,
+        created_at,
+        scope_id,
+        assignee:users!tasks_assignee_id_fkey(handle, avatar_url),
+        scope:scopes(name)
+      `)
+      .eq('scope_id', session.activeScope.id)
+      .order('created_at', { ascending: false });
+
+    // 2. Fetch cross-team requests involving this team
+    const crossReqsPromise = supabase
+      .from('cross_team_requests')
+      .select('id, origin_scope_id, target_scope_id, status, resulting_task_id, origin_scope:scopes!origin_scope_id(name), target_scope:scopes!target_scope_id(name)')
+      .or(`target_scope_id.eq.${session.activeScope.id},origin_scope_id.eq.${session.activeScope.id}`);
+
+    const [teamTasksRes, crossReqsRes] = await Promise.all([teamTasksPromise, crossReqsPromise]);
+    const teamTasks = teamTasksRes.data || [];
+    const crossReqs = crossReqsRes.data || [];
+
+    // 3. Fetch incoming tasks from other teams that pinged our team
+    const incomingReqs = crossReqs.filter(r => r.target_scope_id === session.activeScope?.id && r.resulting_task_id);
+    const existingTaskIds = new Set(teamTasks.map(t => t.id));
+    const incomingTaskIds = incomingReqs.map(r => r.resulting_task_id).filter(id => id && !existingTaskIds.has(id));
+
+    let incomingTasks: any[] = [];
+    if (incomingTaskIds.length > 0) {
+      const { data: incData } = await supabase
+        .from('tasks')
+        .select(`
+          id,
+          title,
+          status,
+          priority,
+          deadline,
+          created_at,
+          scope_id,
+          assignee:users!tasks_assignee_id_fkey(handle, avatar_url),
+          scope:scopes(name)
+        `)
+        .in('id', incomingTaskIds);
+      incomingTasks = incData || [];
+    }
+
+    const allRawTasks = [...teamTasks, ...incomingTasks];
+    tasks = allRawTasks.map(t => {
+      const req = crossReqs.find(r => r.resulting_task_id === t.id);
+      if (!req) return { ...t, crossTeam: null };
+
+      const isIncoming = req.target_scope_id === session.activeScope?.id;
+      return {
+        ...t,
+        crossTeam: {
+          isCrossTeam: true,
+          direction: isIncoming ? 'incoming' : 'outgoing',
+          partnerScopeName: isIncoming ? (req.origin_scope as any)?.name : (req.target_scope as any)?.name,
+          requestStatus: req.status,
+          requestId: req.id
+        }
+      };
+    });
+  } else {
+    // Org-wide overview for Admin / Executive without active scope
+    const { data: allTasks } = await supabase
+      .from('tasks')
+      .select(`
+        id,
+        title,
+        status,
+        priority,
+        deadline,
+        created_at,
+        scope_id,
+        assignee:users!tasks_assignee_id_fkey(handle, avatar_url),
+        scope:scopes(name)
+      `)
+      .order('created_at', { ascending: false });
+
+    const { data: allCrossReqs } = await supabase
+      .from('cross_team_requests')
+      .select('id, origin_scope_id, target_scope_id, status, resulting_task_id, origin_scope:scopes!origin_scope_id(name), target_scope:scopes!target_scope_id(name)');
+
+    tasks = (allTasks || []).map(t => {
+      const req = (allCrossReqs || []).find(r => r.resulting_task_id === t.id);
+      if (!req) return { ...t, crossTeam: null };
+      return {
+        ...t,
+        crossTeam: {
+          isCrossTeam: true,
+          direction: 'cross_team',
+          partnerScopeName: `${(req.origin_scope as any)?.name || 'Origin'} → ${(req.target_scope as any)?.name || 'Target'}`,
+          requestStatus: req.status,
+          requestId: req.id
+        }
+      };
+    });
+  }
+
+  const { data: taskTypes } = await (session.activeScope 
     ? supabase.from('task_types').select('workflow') 
-    : Promise.resolve({ data: null, error: null });
-
-  const [tasksRes, taskTypesRes] = await Promise.all([tasksPromise, taskTypesPromise]);
-
-  const tasks = tasksRes.data;
-  const taskTypes = taskTypesRes.data;
+    : Promise.resolve({ data: null, error: null }));
 
   let columns: string[] = [];
   if (taskTypes) {
